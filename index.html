@@ -55,6 +55,8 @@
   .pip.on { background:var(--accent); }
   .pips.warn .pip { animation:pulse .45s infinite alternate; }
   @keyframes pulse { to { opacity:.3; } }
+  .restart { background:var(--panel); color:var(--text); box-shadow:inset 0 0 0 2px var(--accent); }
+  .restart:hover { background:var(--accent); color:#0b0d1a; }
   .keys { font-size:12px; color:var(--muted); line-height:1.8; }
   kbd { background:#262c5c; border-radius:4px; padding:1px 5px; color:var(--text); font-family:inherit; }
   .touch { display:none; gap:8px; margin-top:14px; flex-wrap:wrap; justify-content:center; }
@@ -94,13 +96,14 @@
           <tr><td><kbd>↓</kbd></td><td>Move faster (in the gravity direction)</td></tr>
           <tr><td><kbd>Space</kbd></td><td>Drop instantly</td></tr>
           <tr><td><kbd>P</kbd> / <kbd>M</kbd></td><td>Pause / mute</td></tr>
+          <tr><td><kbd>R</kbd></td><td>Restart</td></tr>
         </table>
         <button id="startBtn">Start</button>
         <p>or press <kbd>Enter</kbd></p>
       </div>
       <div class="overlay hidden" id="paused">
         <h2>Paused</h2>
-        <p>Press <kbd>P</kbd> to resume</p>
+        <p>Press <kbd>P</kbd> to resume · <kbd>R</kbd> to restart</p>
       </div>
       <div class="overlay hidden" id="over">
         <h2>Game over</h2>
@@ -122,12 +125,14 @@
       <div class="card"><div class="label">Lines</div><div class="val" id="lines">0</div></div>
       <div class="card"><div class="label">Level</div><div class="val" id="level">1</div></div>
       <div class="card"><div class="label">Next</div><canvas id="next"></canvas></div>
+      <button id="restartBtn" class="restart">↻ Restart</button>
       <div class="card keys">
         <kbd>←</kbd> <kbd>→</kbd> move<br>
         <kbd>↑</kbd> rotate<br>
         <kbd>↓</kbd> faster<br>
         <kbd>Space</kbd> drop now<br>
-        <kbd>P</kbd> pause · <kbd>M</kbd> mute
+        <kbd>P</kbd> pause · <kbd>M</kbd> mute<br>
+        <kbd>R</kbd> restart
       </div>
     </div>
   </div>
@@ -469,6 +474,7 @@ document.addEventListener('keydown', e => {
   const k = e.key;
   if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', ' '].includes(k)) e.preventDefault();
   if (state === 'menu' || state === 'over') { if (k === 'Enter') start(); return; }
+  if (k === 'r' || k === 'R') return start();
   if (k === 'p' || k === 'P') return togglePause();
   if (k === 'm' || k === 'M') { muted = !muted; return; }
   switch (k) {
@@ -482,6 +488,9 @@ document.addEventListener('keydown', e => {
 });
 $('startBtn').addEventListener('click', start);
 $('againBtn').addEventListener('click', start);
+$('restartBtn').addEventListener('click', start);
+// drop focus after any click so Space/Enter go to the game, not the button
+document.addEventListener('click', e => { if (e.target.closest('button')) e.target.closest('button').blur(); });
 $('touch').addEventListener('pointerdown', e => {
   const b = e.target.closest('button'); if (!b) return;
   e.preventDefault();
