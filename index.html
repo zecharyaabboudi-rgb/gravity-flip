@@ -1,0 +1,483 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gravity Flip</title>
+<style>
+  :root { --bg:#0b0d1a; --panel:#141833; --text:#e8eaff; --muted:#8a90c0; --accent:#4dd8ff; }
+  body.flipped { --accent:#ff5fa2; }
+  * { box-sizing:border-box; }
+  html, body { margin:0; }
+  body {
+    min-height:100vh; padding:16px;
+    display:flex; flex-direction:column; align-items:center;
+    background:radial-gradient(ellipse at 50% 0%, #1b2150 0%, var(--bg) 60%) fixed;
+    color:var(--text); font-family:system-ui, -apple-system, "Segoe UI", sans-serif;
+    user-select:none; -webkit-user-select:none;
+  }
+  body.flipped { background:radial-gradient(ellipse at 50% 100%, #3a1640 0%, var(--bg) 60%) fixed; }
+  h1 { margin:0 0 4px; font-size:clamp(22px,5vw,34px); letter-spacing:.08em; }
+  h1 span { display:inline-block; color:var(--accent); transition:transform .6s, color .6s; }
+  body.flipped h1 span { transform:rotate(180deg); }
+  .tag { color:var(--muted); margin:0 0 14px; font-size:14px; text-align:center; }
+  .game { display:flex; gap:18px; align-items:flex-start; justify-content:center; flex-wrap:wrap; max-width:100%; }
+  .board-wrap { position:relative; }
+  #board {
+    display:block; height:min(72vh,600px); aspect-ratio:1/2; border-radius:10px; background:#070914;
+    box-shadow:0 0 0 2px #232a5a, 0 0 40px -10px var(--accent); transition:box-shadow .6s;
+  }
+  .overlay {
+    position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:12px; padding:20px; text-align:center; background:rgba(7,9,20,.85); border-radius:10px;
+  }
+  .overlay.hidden { display:none; }
+  .overlay h2 { margin:0; font-size:26px; color:var(--accent); }
+  .overlay p { margin:0; color:var(--muted); font-size:14px; line-height:1.5; }
+  .overlay .big { font-size:32px; font-weight:800; color:var(--text); }
+  button { font:inherit; cursor:pointer; border:none; border-radius:8px; background:var(--accent); color:#0b0d1a; font-weight:700; padding:10px 20px; }
+  .side { display:flex; flex-direction:column; gap:12px; width:150px; }
+  .card { background:var(--panel); border-radius:10px; padding:10px 12px; }
+  .label { font-size:11px; text-transform:uppercase; letter-spacing:.12em; color:var(--muted); }
+  .val { font-size:22px; font-weight:700; font-variant-numeric:tabular-nums; }
+  #next { width:100%; aspect-ratio:1; display:block; }
+  .grav { display:flex; align-items:center; gap:8px; }
+  #arrow { font-size:28px; line-height:1; color:var(--accent); display:inline-block; transition:transform .6s, color .6s; }
+  body.flipped #arrow { transform:rotate(180deg); }
+  .pips { display:flex; gap:4px; margin-top:6px; }
+  .pip { flex:1; height:8px; border-radius:4px; background:#262c5c; transition:background .3s; }
+  .pip.on { background:var(--accent); }
+  .pips.warn .pip { animation:pulse .45s infinite alternate; }
+  @keyframes pulse { to { opacity:.3; } }
+  .keys { font-size:12px; color:var(--muted); line-height:1.8; }
+  kbd { background:#262c5c; border-radius:4px; padding:1px 5px; color:var(--text); font-family:inherit; }
+  .touch { display:none; gap:8px; margin-top:14px; flex-wrap:wrap; justify-content:center; }
+  .touch button { width:60px; height:56px; font-size:22px; background:var(--panel); color:var(--text); padding:0; }
+  @media (pointer:coarse) { .touch { display:flex; } .keys { display:none; } }
+  @media (max-width:560px) {
+    .side { width:100%; flex-direction:row; flex-wrap:wrap; }
+    .side .card { flex:1; min-width:90px; }
+    #board { height:min(60vh,600px); }
+    #next { width:60px; }
+  }
+  .shake { animation:shake .4s; }
+  @keyframes shake {
+    20% { transform:translate(-7px,4px); } 40% { transform:translate(6px,-5px); }
+    60% { transform:translate(-4px,3px); } 80% { transform:translate(3px,-2px); }
+  }
+</style>
+</head>
+<body>
+  <h1>GRAVITY <span>FLIP</span></h1>
+  <p class="tag">Every 5 lines, gravity reverses.</p>
+
+  <div class="game">
+    <div class="board-wrap" id="wrap">
+      <canvas id="board"></canvas>
+      <div class="overlay" id="menu">
+        <h2>Gravity Flip</h2>
+        <p>Stack falling blocks and clear full lines.<br>Every <b>5 lines</b> the whole stack crashes to the
+          ceiling and new blocks start rising from below.</p>
+        <button id="startBtn">Start</button>
+        <p>or press <kbd>Enter</kbd></p>
+      </div>
+      <div class="overlay hidden" id="paused">
+        <h2>Paused</h2>
+        <p>Press <kbd>P</kbd> to resume</p>
+      </div>
+      <div class="overlay hidden" id="over">
+        <h2>Game over</h2>
+        <div class="big" id="finalScore">0</div>
+        <p id="finalInfo"></p>
+        <button id="againBtn">Play again</button>
+        <p>or press <kbd>Enter</kbd></p>
+      </div>
+    </div>
+
+    <div class="side">
+      <div class="card">
+        <div class="label">Gravity</div>
+        <div class="grav"><span id="arrow">⬇</span><span class="val" id="gravText">Down</span></div>
+        <div class="label" style="margin-top:8px">Flip in</div>
+        <div class="pips" id="pips"></div>
+      </div>
+      <div class="card"><div class="label">Score</div><div class="val" id="score">0</div></div>
+      <div class="card"><div class="label">Lines</div><div class="val" id="lines">0</div></div>
+      <div class="card"><div class="label">Level</div><div class="val" id="level">1</div></div>
+      <div class="card"><div class="label">Next</div><canvas id="next"></canvas></div>
+      <div class="card keys">
+        <kbd>←</kbd> <kbd>→</kbd> move<br>
+        <kbd>↑</kbd> / <kbd>X</kbd> rotate · <kbd>Z</kbd> back<br>
+        <kbd>↓</kbd> push with gravity<br>
+        <kbd>Space</kbd> slam<br>
+        <kbd>P</kbd> pause · <kbd>M</kbd> mute
+      </div>
+    </div>
+  </div>
+
+  <div class="touch" id="touch">
+    <button data-act="left">◀</button>
+    <button data-act="rotate">⟳</button>
+    <button data-act="right">▶</button>
+    <button data-act="soft">⇣</button>
+    <button data-act="hard">⤓</button>
+  </div>
+
+<script>
+const COLS = 10, ROWS = 20, FLIP_EVERY = 5;
+const SHAPES = {
+  I: [[0,0,0,0],[1,1,1,1],[0,0,0,0],[0,0,0,0]],
+  O: [[1,1],[1,1]],
+  T: [[0,1,0],[1,1,1],[0,0,0]],
+  S: [[0,1,1],[1,1,0],[0,0,0]],
+  Z: [[1,1,0],[0,1,1],[0,0,0]],
+  J: [[1,0,0],[1,1,1],[0,0,0]],
+  L: [[0,0,1],[1,1,1],[0,0,0]],
+};
+const COLORS = { I:'#ff6b9a', O:'#ffb84d', T:'#4dd8ff', S:'#9b7bff', Z:'#5ef2a0', J:'#ff7a59', L:'#f5e663' };
+
+const $ = id => document.getElementById(id);
+const canvas = $('board'), ctx = canvas.getContext('2d');
+const nextC = $('next'), nctx = nextC.getContext('2d');
+const wrap = $('wrap');
+let CELL = 30;
+
+let grid, piece, nextType, bag, g, score, lines, level, sinceFlip;
+let state = 'menu', dropAcc = 0, clearRows = [], clearT = 0, flipAnim = null;
+
+/* ---------- sound ---------- */
+let actx = null, muted = false;
+function ac() {
+  if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
+  if (actx.state === 'suspended') actx.resume();
+  return actx;
+}
+function tone(f, d, type = 'square', v = 0.04, f2) {
+  if (muted) return;
+  try {
+    const a = ac(), o = a.createOscillator(), gn = a.createGain(), t = a.currentTime;
+    o.type = type;
+    o.frequency.setValueAtTime(f, t);
+    if (f2) o.frequency.exponentialRampToValueAtTime(f2, t + d);
+    gn.gain.setValueAtTime(v, t);
+    gn.gain.exponentialRampToValueAtTime(0.0001, t + d);
+    o.connect(gn).connect(a.destination);
+    o.start(t); o.stop(t + d + 0.02);
+  } catch (e) {}
+}
+const sfx = {
+  move:   () => tone(220, .04, 'square', .015),
+  rotate: () => tone(440, .06, 'triangle', .04),
+  lock:   () => tone(120, .08, 'square', .035),
+  drop:   () => tone(180, .14, 'sawtooth', .05, 60),
+  clear:  n  => [523, 659, 784, 1047].slice(0, Math.max(2, n)).forEach((f, i) => setTimeout(() => tone(f, .16, 'triangle', .06), i * 70)),
+  flip:   up => tone(up ? 140 : 900, .7, 'sawtooth', .05, up ? 900 : 140),
+  land:   () => tone(90, .35, 'sine', .25, 35),
+  over:   () => tone(320, .8, 'sawtooth', .05, 60),
+};
+
+/* ---------- board logic ---------- */
+const emptyRow = () => Array(COLS).fill(null);
+const newGrid = () => Array.from({ length: ROWS }, emptyRow);
+
+function takeFromBag() {
+  if (!bag.length) {
+    bag = Object.keys(SHAPES);
+    for (let i = bag.length - 1; i > 0; i--) { const j = Math.random() * (i + 1) | 0; [bag[i], bag[j]] = [bag[j], bag[i]]; }
+  }
+  return bag.pop();
+}
+function filledRows(m) { const r = []; m.forEach((row, i) => { if (row.some(v => v)) r.push(i); }); return r; }
+
+function collide(m, x, y) {
+  for (let r = 0; r < m.length; r++) for (let c = 0; c < m[r].length; c++) {
+    if (!m[r][c]) continue;
+    const nx = x + c, ny = y + r;
+    if (nx < 0 || nx >= COLS || ny < 0 || ny >= ROWS || grid[ny][nx]) return true;
+  }
+  return false;
+}
+
+function spawn() {
+  const type = nextType;
+  nextType = takeFromBag();
+  const m = SHAPES[type].map(r => r.slice());
+  const fr = filledRows(m);
+  const x = Math.floor((COLS - m[0].length) / 2);
+  // normal gravity: enter at the top; flipped: enter at the bottom
+  const y = g === 1 ? -fr[0] : ROWS - 1 - fr[fr.length - 1];
+  piece = { type, m, x, y };
+  drawNext();
+  if (collide(m, x, y)) gameOver();
+}
+
+function rotated(m, dir) {
+  const n = m.length, out = Array.from({ length: n }, () => Array(n).fill(0));
+  for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) {
+    if (dir > 0) out[c][n - 1 - r] = m[r][c]; else out[n - 1 - c][r] = m[r][c];
+  }
+  return out;
+}
+function rotate(dir) {
+  if (state !== 'play' || piece.type === 'O') return;
+  const m2 = rotated(piece.m, dir);
+  for (const dy of [0, -g]) for (const dx of [0, -1, 1, -2, 2]) {
+    if (!collide(m2, piece.x + dx, piece.y + dy)) {
+      piece.m = m2; piece.x += dx; piece.y += dy; sfx.rotate(); return;
+    }
+  }
+}
+function move(dx) {
+  if (state !== 'play') return;
+  if (!collide(piece.m, piece.x + dx, piece.y)) { piece.x += dx; sfx.move(); }
+}
+function softDrop() {
+  if (state !== 'play') return;
+  if (!collide(piece.m, piece.x, piece.y + g)) { piece.y += g; score += 1; dropAcc = 0; updateHUD(); }
+  else lock(false);
+}
+function hardDrop() {
+  if (state !== 'play') return;
+  let n = 0;
+  while (!collide(piece.m, piece.x, piece.y + g)) { piece.y += g; n++; }
+  score += 2 * n;
+  lock(true);
+}
+
+function lock(hard) {
+  piece.m.forEach((row, r) => row.forEach((v, c) => { if (v) grid[piece.y + r][piece.x + c] = piece.type; }));
+  piece = null;
+  hard ? sfx.drop() : sfx.lock();
+  const full = [];
+  for (let r = 0; r < ROWS; r++) if (grid[r].every(v => v)) full.push(r);
+  if (full.length) { clearRows = full; clearT = 0; state = 'clearing'; sfx.clear(full.length); }
+  else afterSettle();
+  updateHUD();
+}
+
+function finishClear() {
+  const n = clearRows.length;
+  const kept = grid.filter((_, r) => !clearRows.includes(r));
+  const empties = Array.from({ length: n }, emptyRow);
+  // remaining rows collapse toward whichever side gravity points at
+  grid = g === 1 ? empties.concat(kept) : kept.concat(empties);
+  lines += n;
+  score += [0, 100, 300, 500, 800][n] * level;
+  level = 1 + Math.floor(lines / 10);
+  sinceFlip += n;
+  clearRows = [];
+  if (sinceFlip >= FLIP_EVERY) { sinceFlip = Math.min(sinceFlip - FLIP_EVERY, FLIP_EVERY - 1); startFlip(); }
+  else afterSettle();
+  updateHUD();
+}
+
+function afterSettle() { state = 'play'; dropAcc = 0; spawn(); }
+
+function startFlip() {
+  g = -g;
+  document.body.classList.toggle('flipped', g === -1);
+  const rows = [];
+  for (let r = 0; r < ROWS; r++) if (grid[r].some(v => v)) rows.push(r);
+  const k = rows.length;
+  flipAnim = {
+    t: 0, dur: 650,
+    rows: rows.map((from, i) => ({ data: grid[from], from, to: g === -1 ? i : ROWS - k + i })),
+  };
+  state = 'flipping';
+  sfx.flip(g === -1);
+}
+function finishFlip() {
+  grid = newGrid();
+  flipAnim.rows.forEach(o => { grid[o.to] = o.data; });
+  flipAnim = null;
+  sfx.land();
+  wrap.classList.remove('shake'); void wrap.offsetWidth; wrap.classList.add('shake');
+  afterSettle();
+}
+
+/* ---------- game flow ---------- */
+function start() {
+  grid = newGrid(); bag = []; g = 1;
+  score = 0; lines = 0; level = 1; sinceFlip = 0;
+  clearRows = []; flipAnim = null;
+  document.body.classList.remove('flipped');
+  nextType = takeFromBag();
+  $('menu').classList.add('hidden'); $('over').classList.add('hidden'); $('paused').classList.add('hidden');
+  state = 'play'; dropAcc = 0;
+  spawn(); updateHUD();
+  if (!muted) ac();
+}
+function gameOver() {
+  state = 'over';
+  sfx.over();
+  $('finalScore').textContent = score.toLocaleString();
+  $('finalInfo').textContent = `${lines} lines · level ${level}`;
+  $('over').classList.remove('hidden');
+}
+function togglePause() {
+  if (state === 'play') { state = 'paused'; $('paused').classList.remove('hidden'); }
+  else if (state === 'paused') { state = 'play'; $('paused').classList.add('hidden'); }
+}
+
+function updateHUD() {
+  $('score').textContent = score.toLocaleString();
+  $('lines').textContent = lines;
+  $('level').textContent = level;
+  $('gravText').textContent = g === 1 ? 'Down' : 'Up';
+  const pips = $('pips');
+  pips.innerHTML = '';
+  for (let i = 0; i < FLIP_EVERY; i++) {
+    const p = document.createElement('div');
+    p.className = 'pip' + (i < sinceFlip ? ' on' : '');
+    pips.appendChild(p);
+  }
+  pips.classList.toggle('warn', sinceFlip === FLIP_EVERY - 1);
+}
+
+/* ---------- drawing ---------- */
+function rr(c, x, y, w, h, r) {
+  c.beginPath();
+  c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r);
+  c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath();
+}
+function block(c, px, py, s, color, alpha = 1) {
+  const p = s * 0.06;
+  c.globalAlpha = alpha;
+  c.fillStyle = color;
+  rr(c, px + p, py + p, s - 2 * p, s - 2 * p, s * 0.18); c.fill();
+  c.fillStyle = 'rgba(255,255,255,.28)';
+  rr(c, px + p * 2.2, py + p * 2.2, s - p * 4.4, (s - p * 4.4) * 0.32, s * 0.1); c.fill();
+  c.globalAlpha = 1;
+}
+
+function draw() {
+  const W = COLS * CELL, H = ROWS * CELL;
+  const accent = g === -1 ? '#ff5fa2' : '#4dd8ff';
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = '#070914'; ctx.fillRect(0, 0, W, H);
+
+  // glow on the side gravity pulls toward
+  const down = g !== -1;
+  const grad = ctx.createLinearGradient(0, down ? H : 0, 0, down ? H - CELL * 4 : CELL * 4);
+  grad.addColorStop(0, accent + '40'); grad.addColorStop(1, accent + '00');
+  ctx.fillStyle = grad; ctx.fillRect(0, 0, W, H);
+
+  ctx.strokeStyle = 'rgba(255,255,255,.04)'; ctx.lineWidth = 1;
+  for (let x = 1; x < COLS; x++) { ctx.beginPath(); ctx.moveTo(x * CELL, 0); ctx.lineTo(x * CELL, H); ctx.stroke(); }
+  for (let y = 1; y < ROWS; y++) { ctx.beginPath(); ctx.moveTo(0, y * CELL); ctx.lineTo(W, y * CELL); ctx.stroke(); }
+
+  if (!grid) return;
+
+  if (state === 'flipping' && flipAnim) {
+    const t = Math.min(1, flipAnim.t / flipAnim.dur), e = t * t; // accelerate like a real fall
+    for (const o of flipAnim.rows) {
+      const y = (o.from + (o.to - o.from) * e) * CELL;
+      o.data.forEach((v, x) => { if (v) block(ctx, x * CELL, y, CELL, COLORS[v]); });
+    }
+  } else {
+    for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
+      const v = grid[r][c];
+      if (v) block(ctx, c * CELL, r * CELL, CELL, COLORS[v]);
+    }
+  }
+
+  if (state === 'clearing') {
+    const a = 1 - clearT / 260;
+    ctx.fillStyle = `rgba(255,255,255,${0.85 * a})`;
+    for (const r of clearRows) ctx.fillRect(0, r * CELL, W, CELL);
+  }
+
+  if (piece && (state === 'play' || state === 'paused' || state === 'over')) {
+    let gy = piece.y;
+    while (!collide(piece.m, piece.x, gy + g)) gy += g;
+    piece.m.forEach((row, r) => row.forEach((v, c) => {
+      if (!v) return;
+      if (gy !== piece.y) block(ctx, (piece.x + c) * CELL, (gy + r) * CELL, CELL, COLORS[piece.type], 0.18);
+      block(ctx, (piece.x + c) * CELL, (piece.y + r) * CELL, CELL, COLORS[piece.type]);
+    }));
+  }
+}
+
+function drawNext() {
+  const w = nextC.clientWidth;
+  nctx.clearRect(0, 0, w, w);
+  if (!nextType) return;
+  const m = SHAPES[nextType];
+  const rows = filledRows(m);
+  const cols = [];
+  for (let c = 0; c < m[0].length; c++) if (m.some(row => row[c])) cols.push(c);
+  const s = w / 5;
+  const ox = (w - cols.length * s) / 2 - cols[0] * s;
+  const oy = (w - rows.length * s) / 2 - rows[0] * s;
+  m.forEach((row, r) => row.forEach((v, c) => { if (v) block(nctx, ox + c * s, oy + r * s, s, COLORS[nextType]); }));
+}
+
+function resize() {
+  const dpr = window.devicePixelRatio || 1;
+  CELL = canvas.clientHeight / ROWS;
+  canvas.width = Math.round(COLS * CELL * dpr);
+  canvas.height = Math.round(ROWS * CELL * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const nw = nextC.clientWidth;
+  nextC.width = Math.round(nw * dpr); nextC.height = Math.round(nw * dpr);
+  nctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  drawNext(); draw();
+}
+
+/* ---------- main loop ---------- */
+let last = 0;
+function frame(ts) {
+  const dt = Math.min(50, ts - (last || ts));
+  last = ts;
+  if (state === 'play') {
+    dropAcc += dt;
+    const interval = Math.max(70, 800 * Math.pow(0.85, level - 1));
+    if (dropAcc >= interval) {
+      dropAcc = 0;
+      if (!collide(piece.m, piece.x, piece.y + g)) piece.y += g; else lock(false);
+    }
+  } else if (state === 'clearing') {
+    clearT += dt;
+    if (clearT >= 260) finishClear();
+  } else if (state === 'flipping') {
+    flipAnim.t += dt;
+    if (flipAnim.t >= flipAnim.dur) finishFlip();
+  }
+  draw();
+  requestAnimationFrame(frame);
+}
+
+/* ---------- input ---------- */
+document.addEventListener('keydown', e => {
+  const k = e.key;
+  if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', ' '].includes(k)) e.preventDefault();
+  if (state === 'menu' || state === 'over') { if (k === 'Enter') start(); return; }
+  if (k === 'p' || k === 'P') return togglePause();
+  if (k === 'm' || k === 'M') { muted = !muted; return; }
+  switch (k) {
+    case 'ArrowLeft': move(-1); break;
+    case 'ArrowRight': move(1); break;
+    case 'ArrowUp': case 'x': case 'X': rotate(1); break;
+    case 'z': case 'Z': rotate(-1); break;
+    case 'ArrowDown': softDrop(); break;
+    case ' ': hardDrop(); break;
+  }
+});
+$('startBtn').addEventListener('click', start);
+$('againBtn').addEventListener('click', start);
+$('touch').addEventListener('pointerdown', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  e.preventDefault();
+  if (state === 'menu' || state === 'over') return;
+  ({ left: () => move(-1), right: () => move(1), rotate: () => rotate(1), soft: softDrop, hard: hardDrop })[b.dataset.act]();
+});
+document.addEventListener('visibilitychange', () => { if (document.hidden && state === 'play') togglePause(); });
+window.addEventListener('resize', resize);
+
+g = 1; score = 0; lines = 0; level = 1; sinceFlip = 0;
+updateHUD();
+resize();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
